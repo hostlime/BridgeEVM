@@ -12,7 +12,7 @@ contract MyTokenForBridge is ERC20, AccessControl {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(BRIDGE_ROLE, msg.sender);
-        _mint(msg.sender, 1000_000 * 10**decimals());
+        //_mint(msg.sender, 500_000 * 10**decimals());
     }
 
     function mint(address to, uint256 amount) external onlyRole(BRIDGE_ROLE) {

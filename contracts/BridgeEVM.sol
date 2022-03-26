@@ -43,9 +43,7 @@ contract BridgeEmv {
     Counters.Counter private _nonce;
 
     // Адрес бэкенда, который подписывает подтверждения Swap()
-    // Для тестового проекта ЗАХАРДКОДИМ адрес, но для реального проекта необходимы методы для его изменения админом
-    address private signerBackend =
-        address(0xC263718b809ab3EF9C816d7A2313ef0CA0Bb58a1);
+    address private signerBackend;
 
     // маппинг для исключения повторных вывозовов redeem()
     mapping(uint256 => bool) private redeemComplete;
@@ -64,9 +62,14 @@ contract BridgeEmv {
         uint256 _nonce
     );
 
-    constructor(MyTokenForBridge _token_, uint256 _chainID) {
+    constructor(
+        MyTokenForBridge _token_,
+        uint256 _chainID,
+        address _backend
+    ) {
         _token = _token_; // Адрес на токен
         chainID = _chainID; // Id сети, в которой развернут контракт
+        signerBackend = _backend; // Адрес бэкенда
     }
 
     // Вызываем в сети отправаляющей токены
@@ -107,62 +110,5 @@ contract BridgeEmv {
         // Запоминаем что этот _nonce_ уже обработан
         redeemComplete[_nonce_] = true;
         emit Redeem(_from, _to, _amount, _nonce_, chainID);
-    }
-
-    function sigDataHash(
-        address _from,
-        address _to,
-        uint256 _amount,
-        uint256 _nonce_
-    ) external view returns (bytes32) {
-        return
-            keccak256(abi.encodePacked(_from, _to, _amount, _nonce_, chainID));
-    }
-
-    /*
-	function formMessage(address to, uint256 amount, uint256 nonce) public pure 
-    returns (bytes32 message)
-	{
-		message = keccak256(abi.encodePacked(to, amount,  nonce));
-	}
-    function fsignedDataHash1(address _to, uint256 _amount, uint256 nonce) public pure returns(bytes32){
-        return keccak256(abi.encodePacked(_to, _amount, nonce));
-    }
-    function fmessageHash2(bytes32 _signedDataHash) public pure returns(bytes32){
-        return _signedDataHash.toEthSignedMessageHash();
-    }
-    function fecrecover3(bytes32 _messageHash, bytes32 r, bytes32 s, uint8 v) public pure returns(address){
-        return ecrecover(_messageHash, v, r, s);
-    }
-	function hashMessage(bytes32 message) public pure returns (bytes32) {
-		bytes memory prefix = "\x19Ethereum Signed Message:\n32";
-		return keccak256(abi.encodePacked(prefix, message));
-	}
-	*/
-    function splitSignature(bytes memory sig)
-        public
-        pure
-        returns (
-            uint8,
-            bytes32,
-            bytes32
-        )
-    {
-        require(sig.length == 65);
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-
-        assembly {
-            // first 32 bytes, after the length prefix
-            r := mload(add(sig, 32))
-            // second 32 bytes
-            s := mload(add(sig, 64))
-            // final byte (first byte of the next 32 bytes)
-            v := byte(0, mload(add(sig, 96)))
-        }
-
-        return (v, r, s);
     }
 }
