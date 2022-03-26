@@ -32,13 +32,12 @@ describe("Bridge", function () {
     await tokenETH.connect(adminETH).deployed();
     // Bridge ETH
     const BridgeETH = await ethers.getContractFactory("BridgeEmv");
-    bridgeETH = await BridgeETH.connect(adminETH).deploy(tokenETH.address, chainIdETH, backendUser.address);
+    bridgeETH = await BridgeETH.connect(adminETH).deploy(chainIdETH, backendUser.address);
     await bridgeETH.connect(adminETH).deployed();
     // Назначаем роль BRIDGE_ROLE мосту для управления токенами
     let BRIDGE_ROLE = await tokenETH.connect(adminETH).BRIDGE_ROLE();
     await tokenETH.grantRole(BRIDGE_ROLE, bridgeETH.address);
     // Переводим юзеру токены
-    //await tokenETH.connect(adminETH).transfer(userETH.address, UserAmountTransfer);
     await tokenETH.connect(adminETH).mint(userETH.address, UserMintToken);
 
     // Token BSC
@@ -47,11 +46,15 @@ describe("Bridge", function () {
     await tokenBSC.connect(adminBSC).deployed();
     // Bridge BSC
     const BridgeBSC = await ethers.getContractFactory("BridgeEmv");
-    bridgeBSC = await BridgeBSC.connect(adminBSC).deploy(tokenBSC.address, chainIdBSC, backendUser.address);
+    bridgeBSC = await BridgeBSC.connect(adminBSC).deploy(chainIdBSC, backendUser.address);
     await bridgeBSC.connect(adminBSC).deployed();
     // Назначаем роль BRIDGE_ROLE мосту для управления токенами
     BRIDGE_ROLE = await tokenBSC.connect(adminBSC).BRIDGE_ROLE();
     await tokenBSC.grantRole(BRIDGE_ROLE, bridgeBSC.address);
+
+    // добавляем токен для передачи его в другую сеть
+    await bridgeETH.connect(adminETH).includeToken(tokenETH.address, tokenBSC.address, chainIdBSC);
+    await bridgeBSC.connect(adminBSC).includeToken(tokenBSC.address, tokenETH.address, chainIdETH);
   });
 
   // Проверяем все контракты на деплой
@@ -82,14 +85,22 @@ describe("Bridge", function () {
 
   // SWAP  ETH => BSC
   it('Checking function swap()', async () => {
+    // проверяем отправку токенов на несуществующий chainId
+    await expect(bridgeETH.connect(userETH)
+      .swap(tokenETH.address, userBSC.address, UserTransferToken, chainIdBSC + 1))
+      .to.be.revertedWith(
+        "bridge does not support this token"
+      );
+
     const Tx = await bridgeETH.connect(userETH)
-      .swap(userBSC.address, UserTransferToken, chainIdBSC);
+      .swap(tokenETH.address, userBSC.address, UserTransferToken, chainIdBSC);
+
     expect(await tokenETH.balanceOf(userETH.address))
       .to.be.equal(UserMintToken.sub(UserTransferToken));
 
     // Проверяем эвент Swap
     await expect(Tx).to.emit(bridgeETH, "Swap")
-      .withArgs(userBSC.address, UserTransferToken, chainIdBSC, 0);
+      .withArgs(userETH.address, userBSC.address, UserTransferToken, 0, chainIdBSC);
   });
 
   it('Checking that emission token is in ETH', async () => {
@@ -97,10 +108,10 @@ describe("Bridge", function () {
       .to.be.equal(UserMintToken);
   });
 
-  it('Checking function redeem()', async () => {
+  it('Checking function redeem() ETH => BSC => ETH', async () => {
     // Делаем SWAP  ETH => BSC  
     await bridgeETH.connect(userETH)
-      .swap(userBSC.address, UserTransferToken, chainIdBSC);
+      .swap(tokenETH.address, userBSC.address, UserTransferToken, chainIdBSC);
 
     expect(await tokenETH.balanceOf(userETH.address))
       .to.be.equal(UserMintToken.sub(UserTransferToken));
@@ -109,8 +120,8 @@ describe("Bridge", function () {
       .to.be.equal(0);
 
     const signedDataHash = ethers.utils.solidityKeccak256(
-      ["address", "address", "uint256", "uint256", "uint256"],
-      [userETH.address, userBSC.address, UserTransferToken, 0, chainIdBSC]
+      ["address", "uint256", "uint256", "uint256"],
+      [userBSC.address, UserTransferToken, 0, chainIdBSC]
     );
     // At this step we are making ethers to treat data as bytes array,
     // not string
@@ -129,7 +140,7 @@ describe("Bridge", function () {
     // отправляем некорректную сигнатуру
     await expect(bridgeBSC.connect(userETH)
       .redeem(
-        userETH.address,
+        tokenBSC.address,
         userBSC.address,
         UserTransferToken,
         0,
@@ -143,7 +154,7 @@ describe("Bridge", function () {
     // Вызываем редим
     const Tx = await bridgeBSC.connect(userETH)
       .redeem(
-        userETH.address,
+        tokenBSC.address,
         userBSC.address,
         UserTransferToken,
         0,
@@ -155,7 +166,6 @@ describe("Bridge", function () {
     // Проверяем эвент Redeem
     await expect(Tx).to.emit(bridgeBSC, "Redeem")
       .withArgs(
-        userETH.address,
         userBSC.address,
         UserTransferToken,
         0,
@@ -180,7 +190,7 @@ describe("Bridge", function () {
     // require(redeemComplete[_nonce_] == false, "Tokens already sent");
     await expect(bridgeBSC.connect(userETH)
       .redeem(
-        userETH.address,
+        tokenBSC.address,
         userBSC.address,
         UserTransferToken,
         0,
@@ -190,9 +200,55 @@ describe("Bridge", function () {
       )).to.be.revertedWith(
         "Tokens already sent"
       );
+    //*************************** SWAP BSC => ETH ********************************** */
+    // Делаем SWAP BSC => ETH
+    await bridgeBSC.connect(userBSC)
+      .swap(tokenBSC.address, userETH.address, UserTransferToken, chainIdETH);
 
+    expect(await tokenBSC.balanceOf(userBSC.address))
+      .to.be.equal(0);
 
+    const signedDataHash2 = ethers.utils.solidityKeccak256(
+      ["address", "uint256", "uint256", "uint256"],
+      [userETH.address, UserTransferToken, 0, chainIdETH]
+    );
+    const bytesArray2 = ethers.utils.arrayify(signedDataHash2);
+    const flatSignature2 = await backendUser.signMessage(bytesArray2);
+    const signature2 = ethers.utils.splitSignature(flatSignature2);
 
+    // Вызываем редим
+    const Tx2 = await bridgeETH.connect(userBSC)
+      .redeem(
+        tokenETH.address,
+        userETH.address,
+        UserTransferToken,
+        0,
+        signature2.r,
+        signature2.s,
+        signature2.v
+      );
+
+    // Проверяем эвент Redeem
+    await expect(Tx2).to.emit(bridgeETH, "Redeem")
+      .withArgs(
+        userETH.address,
+        UserTransferToken,
+        0,
+        chainIdETH,
+      );
+
+    // Проверяем балансы
+    expect(await tokenETH.balanceOf(userETH.address))
+      .to.be.equal(UserMintToken);
+    expect(await tokenBSC.balanceOf(userBSC.address))
+      .to.be.equal(0);
+
+    // Проверяем эфисиию (суммарное количество токенов обоих сетей не изменилось)
+    const supplyTokenBSC2 = await tokenBSC.totalSupply()
+    const supplyTokenETH2 = await tokenETH.totalSupply()
+
+    expect(UserMintToken)
+      .to.be.equal(supplyTokenBSC2.add(supplyTokenETH2));
   });
 
 });
