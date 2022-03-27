@@ -10,6 +10,41 @@ import "@nomiclabs/hardhat-ethers";
 
 dotenv.config();
 
+
+
+task("swap", "swap token")
+  .addParam("contractAddress", "The bridge contract address on ETH")
+  .addParam("tokenAddress", "Token contract address")
+  .addParam("to", "address to")
+  .addParam("amount", "amount")
+  .addParam("chainid", "tochainid")
+  .setAction(async (taskArgs, hre) => {
+    const contract = await hre.ethers.getContractAt("BridgeEmv", taskArgs.contractAddress)
+    await contract.swap(taskArgs.tokenAddress, taskArgs.to, taskArgs.amount, taskArgs.chainid);
+  });
+
+task("reedem", "mint token")
+  .addParam("contractAddress", "The bridge contract address on BSC")
+  .addParam("tokenAddress", "Token contract address")
+  .addParam("to", "to")
+  .addParam("amount", "amount")
+  .addParam("nonce", "nonce")
+  .addParam("r", "r")
+  .addParam("s", "s")
+  .addParam("v", "v")
+  .setAction(async (taskArgs, hre) => {
+    const contract = await hre.ethers.getContractAt("BridgeEmv", taskArgs.contractAddress)
+    await contract.redeem(
+      taskArgs.tokenAddress,
+      taskArgs.to,
+      taskArgs.amount,
+      taskArgs.nonce,
+      taskArgs.r,
+      taskArgs.s,
+      taskArgs.v
+    );
+  });
+
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
