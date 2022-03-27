@@ -1,46 +1,64 @@
-# Advanced Sample Hardhat Project
+# Bridge ETH/BSC
 
-This project demonstrates an advanced Hardhat use case, integrating other tools commonly used alongside Hardhat in the ecosystem.
+##### Принцип работы следующий:
+    Контракт моста разворачивается в обоих сетях с указанием, в конструкторе, 
+    chainid и и адрес валидатора(бэкенд). 
+    После деплоя контракта необходимо добавить адрес токена для передачи в другую сеть. Добавление токена осуществляется функцией: 
+    ```shell
+    includeToken((адрес контракта токена) => (chainID сети назначения => (адрес токена в сети назначения)))
+    ```
+    Для передачи токенов из ETH в BSC сеть необходимо:
+    1 - Вызвать функцию swap(...), контракта BridgeEmv, в сети ETH:
+    swap()
+    Данная функция сжигает передаваемые токены и генерирует event, который позволит
+    БЭКЕНДУ сгенерировать подпись, которая в свою очередь позволит нам доказать, в другой сети, что swap() уже вызывался и можно переводить токены на указанный адрес.
+2 - Вызвать функцию Redeem(.......) контракта BridgeEmv в сети BSC 
+    Данная функция проверяет что принимаемая сигнатура была подписана ВАЛИДАТОРОМ
+    для данных, которые переданы в параметрах и минтит токены.
 
-The project comes with a sample contract, a test for that contract, a sample script that deploys that contract, and an example of a task implementation, which simply lists the available accounts. It also comes with a variety of other tools, preconfigured to work with the project code.
+    !!! Этап с подписью ВАЛИДАТОРОМ можно исключить и подписывать данные о переводе отправителем, но в данном алгоритме важно чтобы подпись была сгенерирована ВАЛИДАТОРОМ "signerBackend".
+ 
+##### Тестовые контракты и транзакции
+- Контракт токена ETH https://rinkeby.etherscan.io/address/0x5ba5da98d00bdd22b81fa2f40741632f9437b9e2
+- Контракт моста ETH https://rinkeby.etherscan.io/address/0x2fb449ae63dde2b2b71ef071525db559b842327a
+- Контракт токена BSC https://testnet.bscscan.com/address/0xff963bd6638cfbf1389631b32a32b046fb8e6e44
+- Контракт моста BSC https://rinkeby.etherscan.io/address/0xb82735c448970E71529eBa3FF6311606275ad27f
+- SWAP ETH=>BSC https://rinkeby.etherscan.io/tx/0xea83bd520aa1aabb93578cdeb5be499f4e7751d21021ea0556bad77c766d54e0
+- REDEEM in BSC https://testnet.bscscan.com/tx/0x5478da8705ae363ea196f018b8ca3d9781ae272801543fed55d3281cff3163a4#eventlog
 
-Try running some of the following tasks:
 
+##### Функционал:
+- Функция swap(): списывает токены с пользователя и испускает event ‘swapInitialized’
+- Функция redeem(): вызывает функцию ecrecover и восстанавливает по хэшированному сообщению и сигнатуре адрес валидатора, если адрес совпадает с адресом указанным на контракте моста то пользователю отправляются токены
+- Функция updateChainById(): добавить блокчейн или удалить по его chainID
+- Функция includeToken(): добавить токен для передачи его в другую сеть
+- Функция excludeToken(): исключить токен для передачи
+
+##### npx hardhat test:
 ```shell
-npx hardhat accounts
-npx hardhat compile
-npx hardhat clean
-npx hardhat test
-npx hardhat node
-npx hardhat help
-REPORT_GAS=true npx hardhat test
-npx hardhat coverage
-npx hardhat run scripts/deploy.ts
-TS_NODE_FILES=true npx ts-node scripts/deploy.ts
-npx eslint '**/*.{js,ts}'
-npx eslint '**/*.{js,ts}' --fix
-npx prettier '**/*.{json,sol,md}' --check
-npx prettier '**/*.{json,sol,md}' --write
-npx solhint 'contracts/**/*.sol'
-npx solhint 'contracts/**/*.sol' --fix
+Bridge
+    ✔ Checking that contract BridgeBSC is deployed
+    ✔ Checking that contract TokenBSC is deployed
+    ✔ Checking that contract TokenETH is deployed
+    ✔ Checking that contract BridgeETH is deployed
+    ✔ Checking that bridgeBSC has role a BRIDGE_ROLE
+    ✔ Checking that bridgeETH has role a BRIDGE_ROLE
+    ✔ Checking function swap() (151ms)
+    ✔ Checking that emission token is in ETH
+    ✔ Checking function redeem() ETH => BSC => ETH (328ms)
+    ✔ Checking function includeToken() (48ms)
+    ✔ Checking function excludeToken() (45ms)
+    ✔ Checking function updateChainById()
 ```
-
-# Etherscan verification
-
-To try out Etherscan verification, you first need to deploy a contract to an Ethereum network that's supported by Etherscan, such as Ropsten.
-
-In this project, copy the .env.example file to a file named .env, and then edit it to fill in the details. Enter your Etherscan API key, your Ropsten node URL (eg from Alchemy), and the private key of the account which will send the deployment transaction. With a valid .env file in place, first deploy your contract:
-
+##### npx hardhat coverage:
 ```shell
-hardhat run --network ropsten scripts/deploy.ts
+---------------------|----------|----------|----------|----------|----------------|
+File                 |  % Stmts | % Branch |  % Funcs |  % Lines |Uncovered Lines |
+---------------------|----------|----------|----------|----------|----------------|
+ contracts\          |      100 |      100 |      100 |      100 |                |
+  BridgeEVM.sol      |      100 |      100 |      100 |      100 |                |
+  TokenForBridge.sol |      100 |      100 |      100 |      100 |                |
+---------------------|----------|----------|----------|----------|----------------|
+All files            |      100 |      100 |      100 |      100 |                |
+---------------------|----------|----------|----------|----------|----------------|
 ```
-
-Then, copy the deployment address and paste it in to replace `DEPLOYED_CONTRACT_ADDRESS` in this command:
-
-```shell
-npx hardhat verify --network ropsten DEPLOYED_CONTRACT_ADDRESS "Hello, Hardhat!"
-```
-
-# Performance optimizations
-
-For faster runs of your tests and scripts, consider skipping ts-node's type checking by setting the environment variable `TS_NODE_TRANSPILE_ONLY` to `1` in hardhat's environment. For more details see [the documentation](https://hardhat.org/guides/typescript.html#performance-optimizations).

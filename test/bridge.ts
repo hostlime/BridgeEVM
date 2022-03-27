@@ -53,8 +53,10 @@ describe("Bridge", function () {
     await tokenBSC.grantRole(BRIDGE_ROLE, bridgeBSC.address);
 
     // добавляем токен для передачи его в другую сеть
-    await bridgeETH.connect(adminETH).includeToken(tokenETH.address, tokenBSC.address, chainIdBSC);
-    await bridgeBSC.connect(adminBSC).includeToken(tokenBSC.address, tokenETH.address, chainIdETH);
+    await bridgeETH.connect(adminETH)
+      .includeToken(tokenETH.address, tokenBSC.address, chainIdBSC);
+    await bridgeBSC.connect(adminBSC)
+      .includeToken(tokenBSC.address, tokenETH.address, chainIdETH);
   });
 
   // Проверяем все контракты на деплой
@@ -99,7 +101,7 @@ describe("Bridge", function () {
       .to.be.equal(UserMintToken.sub(UserTransferToken));
 
     // Проверяем эвент Swap
-    await expect(Tx).to.emit(bridgeETH, "Swap")
+    await expect(Tx).to.emit(bridgeETH, "swapInitialized")
       .withArgs(userETH.address, userBSC.address, UserTransferToken, 0, chainIdBSC);
   });
 
@@ -251,4 +253,40 @@ describe("Bridge", function () {
       .to.be.equal(supplyTokenBSC2.add(supplyTokenETH2));
   });
 
+  it('Checking function includeToken()', async () => {
+    // Добавляем левую сеть и проверяем добавилась ли она
+    await bridgeETH.connect(adminETH)
+      .includeToken(tokenETH.address, tokenBSC.address, 10)
+
+    expect(
+      await bridgeETH.supportTokens(tokenETH.address, 10))
+      .to.be.equal(tokenBSC.address)
+  });
+  it('Checking function excludeToken()', async () => {
+    // Проверяем что сеть BSC есть
+    expect(
+      await bridgeETH.supportTokens(tokenETH.address, chainIdBSC))
+      .to.be.equal(tokenBSC.address)
+    // Удаляем
+    await bridgeETH.connect(adminETH)
+      .excludeToken(tokenETH.address, chainIdBSC)
+    expect(
+      //убеждаемся что токен удален
+      await bridgeETH.supportTokens(tokenETH.address, chainIdBSC))
+      .to.be.equal(ethers.constants.AddressZero)
+  });
+
+  it('Checking function updateChainById()', async () => {
+    // Проверяем что сеть BSC есть
+    expect(
+      await bridgeETH.supportTokens(tokenETH.address, chainIdBSC))
+      .to.be.equal(tokenBSC.address)
+    // меняем на неправильный адрес tokenETH
+    await bridgeETH.connect(adminETH)
+      .updateChainById(tokenETH.address, tokenETH.address, chainIdBSC)
+    expect(
+      //убеждаемся что токен изменен
+      await bridgeETH.supportTokens(tokenETH.address, chainIdBSC))
+      .to.be.equal(tokenETH.address)
+  });
 });

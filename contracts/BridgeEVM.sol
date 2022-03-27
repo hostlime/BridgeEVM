@@ -9,23 +9,22 @@ import "./TokenForBridge.sol";
 contract BridgeEmv is AccessControl {
     /*
     Принцип работы следующий:
-     Контракт моста разворачивается в обоих сетях с указанием, в конструкторе, 
-     адреса контракта на токен и ID сети. 
-     Важно: В качестве адреса токена необходимо указать адрес на контракт токена 
-     размещенный в той же сети. 
-     Итого: Мы должны иметь 2 контракта в сети BSC и 2 контракта всети ETH.
-     Для передачи токенов из ETH в BSC сеть необходимо:
-     1 - Вызвать функцию swap(...), контракта BridgeEmv, в сети ETH:
-        swap(адрес получателя в сети BSC, количество токенов,id сети BSC = 97)
-     Данная функция сжигает передаваемые токены и генерирует event, который позволит
-     БЭКЕНДУ сгенерировать подпись, которая в свою очередь позволит нам доказать, в другой сети,
-    что swap() уже вызывался и можно переводить токены на указанный адрес.
+        Контракт моста разворачивается в обоих сетях с указанием, в конструкторе, 
+        chainid и и адрес валидатора(бэкенд). 
+        После деплоя контракта необходимо добавить адрес токена для передачи в другую сеть. Добавление токена осуществляется функцией: 
+        ```shell
+        includeToken((адрес контракта токена) => (chainID сети назначения => (адрес токена в сети назначения)))
+        ```
+        Для передачи токенов из ETH в BSC сеть необходимо:
+        1 - Вызвать функцию swap(...), контракта BridgeEmv, в сети ETH:
+        swap()
+        Данная функция сжигает передаваемые токены и генерирует event, который позволит
+        БЭКЕНДУ сгенерировать подпись, которая в свою очередь позволит нам доказать, в другой сети, что swap() уже вызывался и можно переводить токены на указанный адрес.
     2 - Вызвать функцию Redeem(.......) контракта BridgeEmv в сети BSC 
-        Данная функция проверяет что принимаемая сигнатура была подписана БЭКЕНДОМ
+        Данная функция проверяет что принимаемая сигнатура была подписана ВАЛИДАТОРОМ
         для данных, которые переданы в параметрах и минтит токены.
 
-     !!! Этап с подписью БЭКЕНДОМ можно исключить и подписывать данные о переводе отправителем, 
-     но в данном алгоритме важно чтобы подпись была сгенерирована БЭКЕНДОМ "signerBackend".
+        !!! Этап с подписью ВАЛИДАТОРОМ можно исключить и подписывать данные о переводе отправителем, но в данном алгоритме важно чтобы подпись была сгенерирована ВАЛИДАТОРОМ "signerBackend".
     */
 
     // ID эфириум подобной цепи
@@ -49,20 +48,6 @@ contract BridgeEmv is AccessControl {
     // Токены, которые участвуют в транспортировке через мост
     // (токен нашей сети) => (chainID другой сети => (адрес токена другой сети))
     mapping(address => mapping(uint256 => address)) public supportTokens;
-
-    event Swap(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _amount,
-        uint256 _chainID,
-        uint256 _nonce
-    );
-    event Redeem(
-        address indexed _to,
-        uint256 indexed _amount,
-        uint256 _chainID,
-        uint256 _nonce
-    );
 
     constructor(uint256 _chainID, address _backend) {
         chainID = _chainID; // Id сети, в которой развернут контракт
@@ -112,7 +97,7 @@ contract BridgeEmv is AccessControl {
         _nonce_ = _nonce.current();
         _nonce.increment();
         MyTokenForBridge(_tokenAddr).burn(msg.sender, _amount);
-        emit Swap(msg.sender, _to, _amount, _nonce_, _toChainId);
+        emit swapInitialized(msg.sender, _to, _amount, _nonce_, _toChainId);
     }
 
     // Вызываем в сети принимающей токены
@@ -142,4 +127,18 @@ contract BridgeEmv is AccessControl {
         hashComplete[signedDataHash] = true;
         emit Redeem(_to, _amount, _nonce_, chainID);
     }
+
+    event swapInitialized(
+        address indexed _from,
+        address indexed _to,
+        uint256 indexed _amount,
+        uint256 _nonce,
+        uint256 _chainID
+    );
+    event Redeem(
+        address indexed _to,
+        uint256 indexed _amount,
+        uint256 _nonce,
+        uint256 _chainID
+    );
 }
